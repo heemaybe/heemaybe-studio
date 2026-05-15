@@ -694,7 +694,7 @@ function downloadBorder(){
 }
 
 // ══════════════ 3. 컷 분할기 ══════════════
-var cutImg=null,cutCols=3,cutRows=3;
+var cutImg=null,cutCols=3,cutRows=3,cutOutputSize=0;
 function renderCut(){
   document.getElementById('cutBody').innerHTML=`
     <div class="card">
@@ -708,13 +708,25 @@ function renderCut(){
     <div class="card" style="margin-top:1rem">
       <div class="card-title">분할 설정</div>
       <div class="srow"><label>가로 칸</label>
-        <input type="range" min="1" max="5" value="3" id="cutCols" oninput="cutCols=parseInt(this.value);document.getElementById('cutColsV').textContent=this.value+'칸';renderCutPreview()">
+        <input type="range" min="1" max="8" value="3" id="cutCols" oninput="cutCols=parseInt(this.value);document.getElementById('cutColsV').textContent=this.value+'칸';renderCutPreview()">
         <span class="sv" id="cutColsV">3칸</span></div>
       <div class="srow"><label>세로 칸</label>
-        <input type="range" min="1" max="5" value="3" id="cutRows" oninput="cutRows=parseInt(this.value);document.getElementById('cutRowsV').textContent=this.value+'칸';renderCutPreview()">
+        <input type="range" min="1" max="8" value="3" id="cutRows" oninput="cutRows=parseInt(this.value);document.getElementById('cutRowsV').textContent=this.value+'칸';renderCutPreview()">
         <span class="sv" id="cutRowsV">3칸</span></div>
+
+      <div style="margin-top:.5rem;margin-bottom:.875rem">
+        <p style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:.5rem">📐 출력 규격 (저장 크기)</p>
+        <div class="tags" id="sizePresets">
+          <span class="tag sel" id="sizeOrig" onclick="setOutputSize(0)">원본 크기</span>
+          <span class="tag" id="size360" onclick="setOutputSize(360)">360×360 (카카오)</span>
+          <span class="tag" id="size540" onclick="setOutputSize(540)">540×540 (카카오 2x)</span>
+          <span class="tag" id="size1080" onclick="setOutputSize(1080)">1080×1080 (인스타)</span>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:.375rem">카카오 이모티콘 기본 규격은 360×360px이에요</p>
+      </div>
+
       <div style="margin-top:.5rem">
-        <p style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:.5rem">규격 바로가기</p>
+        <p style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:.5rem">분할 바로가기</p>
         <div class="tags">
           <span class="tag" onclick="setPreset(1,3)">인스타 세로 (1×3)</span>
           <span class="tag" onclick="setPreset(3,1)">인스타 가로 (3×1)</span>
@@ -725,6 +737,13 @@ function renderCut(){
     </div>
     <div id="cutPreview"></div>
     <div id="cutDlArea"></div>`;
+}
+function setOutputSize(size){
+  cutOutputSize=size;
+  document.querySelectorAll('#sizePresets .tag').forEach(el=>el.classList.remove('sel'));
+  var ids={0:'sizeOrig',360:'size360',540:'size540',1080:'size1080'};
+  if(ids[size])document.getElementById(ids[size]).classList.add('sel');
+  renderCutPreview();
 }
 function setPreset(c,r){cutCols=c;cutRows=r;document.getElementById('cutCols').value=c;document.getElementById('cutColsV').textContent=c+'칸';document.getElementById('cutRows').value=r;document.getElementById('cutRowsV').textContent=r+'칸';renderCutPreview();}
 function loadCutImg(e){
@@ -763,20 +782,25 @@ async function downloadCuts(){
   var zip=new JSZip();
   var cellW=Math.floor(cutImg.width/cutCols);
   var cellH=Math.floor(cutImg.height/cutRows);
+  var outSize=cutOutputSize||0;
   var idx=1;
   for(var r=0;r<cutRows;r++){
     for(var c=0;c<cutCols;c++){
       var canvas=document.createElement('canvas');
-      canvas.width=cellW;canvas.height=cellH;
+      var finalW=outSize||cellW;
+      var finalH=outSize||cellH;
+      canvas.width=finalW;canvas.height=finalH;
       var ctx=canvas.getContext('2d');
-      ctx.drawImage(cutImg,c*cellW,r*cellH,cellW,cellH,0,0,cellW,cellH);
+      ctx.fillStyle='white';ctx.fillRect(0,0,finalW,finalH);
+      ctx.drawImage(cutImg,c*cellW,r*cellH,cellW,cellH,0,0,finalW,finalH);
       var blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
-      zip.file('cut_'+r+'_'+c+'.png',blob);
+      zip.file('emoticon_'+String(idx).padStart(2,'0')+'.png',blob);
       idx++;
     }
   }
   var content=await zip.generateAsync({type:'blob'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='heemaybe_cuts.zip';a.click();
+  var sizeName=cutOutputSize?'_'+cutOutputSize+'px':'';
+  var a=document.createElement('a');a.href=URL.createObjectURL(content);a.download='heemaybe_cuts'+sizeName+'.zip';a.click();
 }
 
 // ══════════════ 4. 카톡 미리보기 ══════════════
