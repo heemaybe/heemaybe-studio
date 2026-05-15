@@ -68,10 +68,11 @@ exports.handler = async function(event, context) {
     const text = claudeData.content.filter(b => b.type === 'text').map(b => b.text).join('');
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
 
-    // 2. DALL-E 3로 이미지 생성 (OpenAI 키 있으면)
+    // 2. DALL-E 3로 이미지 생성 (순차적으로)
     if (openaiKey) {
-      const imagePromises = parsed.frames.map(async (frame) => {
+      for (let i = 0; i < parsed.frames.length; i++) {
         try {
+          const frame = parsed.frames[i];
           const imgRes = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -80,25 +81,21 @@ exports.handler = async function(event, context) {
             },
             body: JSON.stringify({
               model: 'dall-e-3',
-              prompt: frame.prompt,
+              prompt: `Simple emoticon reference drawing. Extremely minimal chibi character with: perfectly round head, cross-shaped eyes (+ shape, not actual eyes), tiny dot nose, simple curved mouth, small round body, stubby limbs. Pure black outlines only, completely white background, zero shading, zero color, zero fill. Coloring book line art style. The character is: ${frame.prompt.split(',').slice(-3).join(',')}. Single character only, centered, lots of white space around.`,
               n: 1,
               size: '1024x1024',
               quality: 'standard',
-              style: 'vivid'
+              style: 'natural'
             })
           });
           const imgData = await imgRes.json();
-          return imgData.data?.[0]?.url || null;
+          parsed.frames[i].imageUrl = imgData.data?.[0]?.url || null;
         } catch (e) {
-          return null;
+          parsed.frames[i].imageUrl = null;
         }
-      });
-
-      const imageUrls = await Promise.all(imagePromises);
-      parsed.frames = parsed.frames.map((frame, i) => ({
-        ...frame,
-        imageUrl: imageUrls[i]
-      }));
+        // DALL-E 요청 간격
+        if (i < parsed.frames.length - 1) await new Promise(r => setTimeout(r, 500));
+      }
     }
 
     return {
