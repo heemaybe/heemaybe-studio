@@ -580,18 +580,18 @@ async function generateFrames(){
         <div class="frame-desc">${f.ko}</div>
         <div class="frame-prompt">${f.prompt}</div>
       </div>`).join('');
-    for(var i=0;i<parsed.frames.length;i++){
-      var f=parsed.frames[i];
-      var url=`https://image.pollinations.ai/prompt/${encodeURIComponent(f.prompt)}?width=512&height=512&seed=${Date.now()+i}&nologo=true`;
-      (function(idx,imgUrl){
-        var container=document.getElementById('fimg'+idx);
+    var now=Date.now();
+    var imgPromises=parsed.frames.map(function(f,i){
+      return new Promise(function(resolve){
+        var url='https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true';
+        var container=document.getElementById('fimg'+i);
         var img=new Image();
-        img.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=imgUrl;container.appendChild(im);}
-        img.onerror=function(){container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';}
-        img.src=imgUrl;
-      })(i,url);
-      await new Promise(r=>setTimeout(r,700));
-    }
+        img.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=url;container.appendChild(im);resolve();}
+        img.onerror=function(){container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();}
+        img.src=url;
+      });
+    });
+    await Promise.all(imgPromises);
     if(parsed.tip){tipArea.innerHTML=`<div style="background:var(--pl);border-left:3px solid var(--pink);border-radius:0 var(--rs) var(--rs) 0;padding:.875rem 1rem;font-size:13px;color:var(--pd);margin-top:1rem;font-weight:700">💡 작가 팁: ${parsed.tip}</div>`;}
     status.textContent='완성! 아래 프롬프트를 복사해서 이미지 생성 AI에 활용해봐요 🎨';
   }catch(e){
