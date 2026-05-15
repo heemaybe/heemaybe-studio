@@ -352,6 +352,7 @@ footer a:hover{color:var(--pink)}
         <span class="tag" onclick="setFrameEx('화가 나서 발을 구르는 곰')">😤 화가 나서 발구르는 곰</span>
         <span class="tag" onclick="setFrameEx('하트를 날리는 강아지')">💕 하트 날리는 강아지</span>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:.875rem"><span class="tag sel" id="typeAnimal" onclick="setCharType('animal')">🐾 동물형</span><span class="tag" id="typeHuman" onclick="setCharType('human')">🧍 사람형</span></div>
       <input class="inp" id="frameInput" placeholder="예: 맛있는 걸 먹고 감동받는 고양이" type="text">
       <div class="action-row">
         <button class="btnp" id="frameBtn" onclick="generateFrames()"><i class="ti ti-wand"></i> 프레임 생성</button>
@@ -550,6 +551,12 @@ function updateFrameUsage(){
   document.getElementById('frameBtn').disabled=(!isPro()&&rem<=0);
 }
 function setFrameEx(t){document.getElementById('frameInput').value=t;}
+var charType='animal';
+function setCharType(t){
+  charType=t;
+  document.querySelectorAll('#typeAnimal,#typeHuman').forEach(el=>el.classList.remove('sel'));
+  document.getElementById(t==='animal'?'typeAnimal':'typeHuman').classList.add('sel');
+}
 
 async function generateFrames(){
   if(!isPro()&&getRem('frame')<=0){toast('오늘 무료 횟수를 다 썼어요. Pro로 업그레이드해요!');return;}
@@ -566,7 +573,7 @@ async function generateFrames(){
     var res=await fetch('/.netlify/functions/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:input})
+      body:JSON.stringify({action:input,charType:charType})
     });
     var parsed=await res.json();
     if(parsed.error)throw new Error(parsed.error);
@@ -583,11 +590,23 @@ async function generateFrames(){
     var now=Date.now();
     var imgPromises=parsed.frames.map(function(f,i){
       return new Promise(function(resolve){
-        var url='https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true';
         var container=document.getElementById('fimg'+i);
+        // DALL-E 이미지 있으면 사용, 없으면 Pollinations 폴백
+        var url=f.imageUrl||('https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true');
         var img=new Image();
         img.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=url;container.appendChild(im);resolve();}
-        img.onerror=function(){container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();}
+        img.onerror=function(){
+          if(f.imageUrl){
+            // DALL-E 실패시 Pollinations으로 재시도
+            var fallback='https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true';
+            var img2=new Image();
+            img2.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=fallback;container.appendChild(im);resolve();}
+            img2.onerror=function(){container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();}
+            img2.src=fallback;
+          } else {
+            container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();
+          }
+        }
         img.src=url;
       });
     });
