@@ -579,35 +579,59 @@ async function generateFrames(){
     if(parsed.error)throw new Error(parsed.error);
     if(!isPro())incUsage('frame');
     updateFrameUsage();
-    status.textContent='이미지 생성 중... (최대 30초 소요)';
+    // 로딩바 표시
+    status.innerHTML=`
+      <div style="margin:.5rem 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">
+          <span id="loadingTxt">🎨 이미지 생성 중...</span>
+          <span id="loadingPct">0 / 4</span>
+        </div>
+        <div style="background:var(--border);border-radius:10px;height:8px;overflow:hidden">
+          <div id="loadingBar" style="height:100%;background:linear-gradient(90deg,var(--pink),var(--lav));border-radius:10px;width:0%;transition:width .4s ease"></div>
+        </div>
+      </div>`;
     framesArea.innerHTML=parsed.frames.map((f,i)=>`
       <div class="frame-card">
         <div class="frame-num">FRAME ${f.num}</div>
-        <div class="frame-img" id="fimg${i}"><div style="width:8px;height:8px;border-radius:50%;background:var(--pink);animation:sp .7s ease-in-out infinite"></div></div>
+        <div class="frame-img" id="fimg${i}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--pink);animation:sp .7s ease-in-out infinite"></div>
+            <span style="font-size:10px;color:var(--muted)">대기중</span>
+          </div>
+        </div>
         <div class="frame-desc">${f.ko}</div>
-        <div class="frame-prompt">${f.prompt}</div>
       </div>`).join('');
-    var now=Date.now();
+
+    var done=0;
+    function updateProgress(){
+      done++;
+      var pct=Math.round(done/parsed.frames.length*100);
+      var bar=document.getElementById('loadingBar');
+      var pctEl=document.getElementById('loadingPct');
+      var txt=document.getElementById('loadingTxt');
+      if(bar)bar.style.width=pct+'%';
+      if(pctEl)pctEl.textContent=done+' / '+parsed.frames.length;
+      if(txt)txt.textContent=done===parsed.frames.length?'✅ 완성!':'🎨 이미지 생성 중... ('+done+'/'+parsed.frames.length+')';
+    }
+
     var imgPromises=parsed.frames.map(function(f,i){
       return new Promise(function(resolve){
         var container=document.getElementById('fimg'+i);
-        // DALL-E 이미지 있으면 사용, 없으면 Pollinations 폴백
-        var url=f.imageUrl||('https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true');
-        var img=new Image();
-        img.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=url;container.appendChild(im);resolve();}
-        img.onerror=function(){
-          if(f.imageUrl){
-            // DALL-E 실패시 Pollinations으로 재시도
-            var fallback='https://image.pollinations.ai/prompt/'+encodeURIComponent(f.prompt)+'?width=512&height=512&seed='+(now+i)+'&nologo=true';
-            var img2=new Image();
-            img2.onload=function(){container.innerHTML='';var im=document.createElement('img');im.src=fallback;container.appendChild(im);resolve();}
-            img2.onerror=function(){container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();}
-            img2.src=fallback;
-          } else {
-            container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패<br>프롬프트 참고</span>';resolve();
-          }
+        if(!f.imageUrl){
+          container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패</span>';
+          updateProgress();resolve();return;
         }
-        img.src=url;
+        var img=new Image();
+        img.onload=function(){
+          container.innerHTML='';
+          var im=document.createElement('img');im.src=f.imageUrl;container.appendChild(im);
+          updateProgress();resolve();
+        }
+        img.onerror=function(){
+          container.innerHTML='<span style="font-size:10px;color:var(--muted);padding:6px;text-align:center">이미지 생성 실패</span>';
+          updateProgress();resolve();
+        }
+        img.src=f.imageUrl;
       });
     });
     await Promise.all(imgPromises);

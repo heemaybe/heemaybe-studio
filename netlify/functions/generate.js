@@ -10,7 +10,6 @@ exports.handler = async function(event, context) {
     const openaiKey = process.env.OPENAI_API_KEY;
     if (!anthropicKey || !openaiKey) return { statusCode: 500, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: 'API 키 없음' }) };
 
-    // 1. Claude 프레임 분석
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
@@ -24,17 +23,14 @@ exports.handler = async function(event, context) {
     const text = claudeData.content.filter(b => b.type === 'text').map(b => b.text).join('');
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
 
-    // 캐릭터 타입별 스타일 설명
     const charStyle = charType === 'human'
       ? 'chibi human character, 3-head-tall proportion, round head, tiny body, stubby arms and legs'
       : 'chibi animal character, very round large head, tiny round body, small stubby limbs, animal ears';
 
-    // 2. DALL-E 3로 이미지 생성
     for (let i = 0; i < parsed.frames.length; i++) {
       try {
         const frame = parsed.frames[i];
         const pose = frame.poseDesc || 'standing neutral pose';
-
         const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
