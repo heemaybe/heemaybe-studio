@@ -1,5 +1,4 @@
 exports.handler = async function(event, context) {
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -19,9 +18,10 @@ exports.handler = async function(event, context) {
   try {
     const { action } = JSON.parse(event.body);
 
-    // API 키는 환경변수에서 안전하게 가져옴
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    if (!anthropicKey) {
       return {
         statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -29,15 +29,16 @@ exports.handler = async function(event, context) {
       };
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // 1. Claude로 프레임 분석
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        'x-api-key': anthropicKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
         messages: [{
           role: 'user',
@@ -52,7 +53,7 @@ exports.handler = async function(event, context) {
     {
       "num": 1,
       "ko": "한국어로 이 프레임 포즈 설명 (작가가 그릴 수 있게 구체적으로, 1-2문장)",
-      "prompt": "chibi kawaii cute emoticon character, [구체적인 포즈 영어 설명], simple clean line art, white background, cartoon sticker style, no text, flat design"
+      "prompt": "simple chibi character sketch, extremely minimal design, round head with tiny cross mark face, small round body, thick black outline only, pure white background, no color no shading no fill, coloring book style, single character pose showing [구체적인 포즈 영어 설명], clean simple lines, emoticon reference sheet style, black and white line art only"
     }
   ],
   "tip": "이 동작을 자연스럽게 그리기 위한 작가 팁 1가지 (한국어)"
@@ -61,22 +62,44 @@ exports.handler = async function(event, context) {
       })
     });
 
-    const data = await response.json();
+    const claudeData = await claudeRes.json();
+    if (!claudeRes.ok) throw new Error(claudeData.error?.message || 'Claude 오류');
 
-    if (!response.ok) {
-      return {
-        statusCode: response.status,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: data.error?.message || 'API 오류' })
-      };
-    }
-
-    const text = data.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-
+    const text = claudeData.content.filter(b => b.type === 'text').map(b => b.text).join('');
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    // 2. DALL-E 3로 이미지 생성 (OpenAI 키 있으면)
+    if (openaiKey) {
+      const imagePromises = parsed.frames.map(async (frame) => {
+        try {
+          const imgRes = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openaiKey}`
+            },
+            body: JSON.stringify({
+              model: 'dall-e-3',
+              prompt: frame.prompt,
+              n: 1,
+              size: '1024x1024',
+              quality: 'standard',
+              style: 'vivid'
+            })
+          });
+          const imgData = await imgRes.json();
+          return imgData.data?.[0]?.url || null;
+        } catch (e) {
+          return null;
+        }
+      });
+
+      const imageUrls = await Promise.all(imagePromises);
+      parsed.frames = parsed.frames.map((frame, i) => ({
+        ...frame,
+        imageUrl: imageUrls[i]
+      }));
+    }
 
     return {
       statusCode: 200,
